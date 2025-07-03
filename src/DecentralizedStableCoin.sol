@@ -20,10 +20,11 @@ contract DecentralizedStablecoin is ERC20, ERC20Burnable, Ownable {
         Ownable(initialOwner)
     {}
 
-    function mint(address to, uint256 amount) public onlyOwner {
+    function mint(address to, uint256 amount) public onlyOwner returns (bool) {
         require(to != address(0), "Cannot mint to the zero address");
         require(amount > 0, "Amount must be greater than zero");
         _mint(to, amount);
+        return true;
     }
 
     function burn(address from, uint256 amount) public onlyOwner {
