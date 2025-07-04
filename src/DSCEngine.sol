@@ -46,6 +46,7 @@ contract DSCEngine is ReentrancyGuard {
     uint256 private constant MIN_HEALTH_FACTOR = 1;
 
     event CollateralDeposited(address indexed user, address indexed collateralToken, uint256 amount);
+    event CollateralRedeemed(address indexed user, address indexed collateralToken, uint256 amount);
 
     modifier moreThanZero(uint256 amount) {
         if (amount <= 0) {
@@ -71,6 +72,18 @@ contract DSCEngine is ReentrancyGuard {
             s_collateralTokens.push(collateralTokens[i]);
         }
         i_dscToken = DecentralizedStablecoin(dscToken);
+    }
+
+    /*
+     * @notice This function allows users to deposit collateral and mint DSC in one transaction.
+     * It follows CEI (Checks-Effects-Interactions) pattern.
+     * @param collateralToken The address of the collateral token to deposit.
+     * @param collateralAmount The amount of collateral to deposit.
+     * @param dscAmountToMint The amount of DSC tokens to mint.
+     */
+    function depositCollateralAndMintDsc(address collateralToken, uint256 collateralAmount, uint256 dscAmountToMint) external{
+        depositCollateral(collateralToken, collateralAmount);
+        mintDsc(dscAmountToMint);
     }
 
     /* 
@@ -100,7 +113,7 @@ contract DSCEngine is ReentrancyGuard {
      * It checks that the amount to mint is greater than zero and that the user has enough collateral.
      * @param dscAmountToMint The amount of DSC tokens to mint.
      */
-    function mintDsc(uint256 dscAmountToMint) external moreThanZero(dscAmountToMint) nonReentrant {
+    function mintDsc(uint256 dscAmountToMint) public moreThanZero(dscAmountToMint) nonReentrant {
         s_dscMinted[msg.sender] += dscAmountToMint;
         // check that the user has enough collateral to back the DSC they are minting
         _revertIfHealthFactorIsBroken(msg.sender);
@@ -109,6 +122,30 @@ contract DSCEngine is ReentrancyGuard {
         if (!minted) {
             revert DSCEngine__MintFailed();
         }
+    }
+
+    /*
+     * @notice This function allows users to redeem their collateral and burn the corresponding DSC tokens.
+     * In order to redeem collateral, health factor must be above 1 after collateral is redeemed.
+     * It follows CEI (Checks-Effects-Interactions) pattern.
+     * @param tokenCollateralAddress The address of the collateral token to redeem.
+     * @param amountCollateral The amount of collateral to redeem.
+     * @param burnAmount The amount of DSC tokens to burn.
+     */
+    function redeemCollateralAndBurnDsc(address tokenCollateralAddress, uint256 amountCollateral, uint256 burnAmount) external moreThanZero(amountCollateral) nonReentrant {
+        // Burn the DSC tokens first
+        s_dscMinted[msg.sender] -= burnAmount;
+        i_dscToken.burn(msg.sender, burnAmount);
+
+        s_collateralDeposited[msg.sender][tokenCollateralAddress] -= amountCollateral;
+        emit CollateralRedeemed(msg.sender, tokenCollateralAddress, amountCollateral);
+
+        // transfer the collateral to the user
+        bool success = IERC20(tokenCollateralAddress).transfer(msg.sender, amountCollateral);
+        if (!success) {
+            revert DSCEngine__TransferFailed();
+        }
+        _revertIfHealthFactorIsBroken(msg.sender);
     }
 
     function getAccountCollateralValue(address user) public view returns (uint256 totalCollateralValueInUSD) {
