@@ -225,6 +225,11 @@ contract DSCEngine is ReentrancyGuard {
         totalCollateralValue = getAccountCollateralValue(user);
     }
 
+    function getAccountInformation(address user) external view returns (uint256 totalCollateralValue, uint256 totalDscMinted) {
+        (totalCollateralValue, totalDscMinted) = _getAccountInformation(user);
+        return (totalCollateralValue, totalDscMinted);
+    }
+
     /*
      * @notice This function calculates how close a user is to being liquidated.
      * The health factor is the ratio of the value of collateral to the value of DSC minted.
@@ -236,13 +241,20 @@ contract DSCEngine is ReentrancyGuard {
         // total Dsc minted
         // total collateral value
         (uint256 totalCollateralValue, uint256 totalDscMinted) = _getAccountInformation(user);
+        return _calculateHealthFactor(totalCollateralValue, totalDscMinted);
+    }
 
-        // eg: 1000 ETH * 50 = 50000 / 100 = 500
-        uint256 collateralAdjustedForLiquidation = (totalCollateralValue * LIQUIDATION_THRESHOLD) / LIQUIDATION_THRESHOLD_PRECISION;
+    function _calculateHealthFactor(uint256 totalCollateralValue, uint256 totalDscMinted) internal pure returns (uint256) {
+        if (totalDscMinted == 0) {
+            return type(uint256).max; // No DSC minted, health factor is infinite
+        }
+        // health factor = total collateral value / total Dsc minted
+        // We multiply by PRECISION to avoid division by zero and to keep the precision
+        return (totalCollateralValue * PRECISION) / totalDscMinted;
+    }
 
-        // eg: 1000$ ETH and 100$ Dsc minted
-        // 1000 * 50 = 50000/100 = (500 / 100) = 5 > 1;
-        return (collateralAdjustedForLiquidation * PRECISION) / totalDscMinted;
+    function calculateHealthFactor(uint256 totalCollateralValue, uint256 totalDscMinted) external pure returns (uint256) {
+        return _calculateHealthFactor(totalCollateralValue, totalDscMinted);
     }
 
     // chech the health factor (do they have enough collateral to back the DSC they minted?)
@@ -252,5 +264,46 @@ contract DSCEngine is ReentrancyGuard {
         if (healthFactor < MIN_HEALTH_FACTOR) {
             revert DSCEngine__HealthFactorBroken(healthFactor);
         }
+    }
+
+    // Getter functions
+    function getPrecision() external pure returns (uint256) {
+        return PRECISION;
+    }
+
+    function getAdditionalFeedPrecision() external pure returns (uint256) {
+        return ADDITIONAL_FEED_PRECISION;
+    }
+
+    function getLiquidationThreshold() external pure returns (uint256) {
+        return LIQUIDATION_THRESHOLD;
+    }
+
+    function getLiquidationBonus() external pure returns (uint256) {
+        return LIQUIDATION_BONUS;
+    }
+
+    function getLiquidationPrecision() external pure returns (uint256) {
+        return LIQUIDATION_THRESHOLD_PRECISION;
+    }
+
+    function getMinHealthFactor() external pure returns (uint256) {
+        return MIN_HEALTH_FACTOR;
+    }
+
+    function getCollateralTokens() external view returns (address[] memory) {
+        return s_collateralTokens;
+    }
+
+    function getDsc() external view returns (address) {
+        return address(i_dscToken);
+    }
+
+    function getPriceFeed(address token) external view returns (address) {
+        return s_priceFeeds[token];
+    }
+
+    function getHealthFactor(address user) external view returns (uint256) {
+        return _healthFactor(user);
     }
 }
