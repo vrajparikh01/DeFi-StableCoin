@@ -144,6 +144,11 @@ contract DSCEngine is ReentrancyGuard {
         _revertIfHealthFactorIsBroken(msg.sender);
     }
 
+    function redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral) external moreThanZero(amountCollateral) nonReentrant onlySupportedCollateral(tokenCollateralAddress) {
+        _redeemCollateral(msg.sender, msg.sender, tokenCollateralAddress, amountCollateral);
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
+
     function _redeemCollateral(address from, address to, address tokenCollateralAddress, uint256 amountCollateral) private {
         s_collateralDeposited[from][tokenCollateralAddress] -= amountCollateral;
         emit CollateralRedeemed(from, to, tokenCollateralAddress, amountCollateral);
@@ -305,5 +310,9 @@ contract DSCEngine is ReentrancyGuard {
 
     function getHealthFactor(address user) external view returns (uint256) {
         return _healthFactor(user);
+    }
+
+    function getCollateralBalanceOfUser(address user, address collateralToken) external view returns (uint256) {
+        return s_collateralDeposited[user][collateralToken];
     }
 }
