@@ -10,6 +10,7 @@ import {Test} from "forge-std/Test.sol";
 import {DSCEngine} from "../../src/DSCEngine.sol";
 import {DecentralizedStablecoin} from "../../src/DecentralizedStableCoin.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
+import {MockV3Aggregator} from "../mocks/MockV3Aggregator.sol";
 
 contract Handler is Test {
     DSCEngine public dscEngine;
@@ -17,6 +18,10 @@ contract Handler is Test {
 
     ERC20Mock public weth;
     ERC20Mock public wbtc;
+
+    uint256 public timesMintIsCalled;
+    address[] public usersWithCollateralDeposited;
+    MockV3Aggregator public wethUsdPriceFeed;
 
     uint256 public constant MAX_DEPOSIT_AMOUNT = type(uint96).max;
 
@@ -27,18 +32,24 @@ contract Handler is Test {
         address[] memory collateralTokens = dscEngine.getCollateralTokens();
         weth = ERC20Mock(collateralTokens[0]);
         wbtc = ERC20Mock(collateralTokens[1]);
+
+        wethUsdPriceFeed = MockV3Aggregator(dscEngine.getCollateralTokenPriceFeed(address(weth)));
     }
 
-    function mintDsc(uint256 amountDsc) external {
+    function mintDsc(uint256 amountDsc, uint256 addressSeed) external {
+        address sender = usersWithCollateralDeposited[
+            addressSeed % usersWithCollateralDeposited.length
+        ];
         (uint256 totalCollateralValue, uint256 totalDscMinted) = dscEngine.getAccountInformation(msg.sender);
         int256 maxDscToMint = (int256(totalCollateralValue) / 2) - int256(totalDscMinted);
         if(maxDscToMint <= 0) {
             return; // No need to mint if maxDscToMint is zero or negative
         }
         amountDsc = bound(amountDsc, 1, uint256(maxDscToMint));
-        vm.startPrank(msg.sender);
+        vm.startPrank(sender);
         dscEngine.mintDsc(amountDsc);
         vm.stopPrank();
+        timesMintIsCalled++;
     }
 
     function depositCollateral(uint256 collateralSeed, uint256 amountCollateral) external {
@@ -50,6 +61,7 @@ contract Handler is Test {
         collateral.approve(address(dscEngine), amountCollateral);
         dscEngine.depositCollateral(address(collateral), amountCollateral);
         vm.stopPrank();
+        usersWithCollateralDeposited.push(msg.sender);
     }
 
     function redeemCollateral(uint256 collateralSeed, uint256 amountCollateral) external {
@@ -61,6 +73,12 @@ contract Handler is Test {
         }
         dscEngine.redeemCollateral(address(collateral), amountCollateral);
     }
+
+    // This will break the fuzzing if we use it, so we comment it out
+    // function updateCollateralPrice(uint96 newPrice) external {
+    //     int256 newPriceInt = int256(uint256(newPrice)); 
+    //     wethUsdPriceFeed.updateAnswer(newPriceInt);
+    // }
 
     function _getCollateralFromSeed(uint256 collateralSeed) private view returns (ERC20Mock) {
         if (collateralSeed % 2 == 0) {
